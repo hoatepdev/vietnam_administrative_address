@@ -308,7 +308,7 @@ function buildNewAddressResult(match) {
   };
 }
 
-export function parseNewAddressText(text, data = defaultData) {
+function parseNewAddressTextWithCandidates(text, candidates) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
       text,
@@ -322,7 +322,6 @@ export function parseNewAddressText(text, data = defaultData) {
     };
   }
 
-  const candidates = buildNewTextCandidates(data);
   const match = matchCommaSeparatedText(text, candidates) || matchSubstringText(text, candidates);
 
   if (!match) {
@@ -351,7 +350,7 @@ export function parseNewAddressText(text, data = defaultData) {
   };
 }
 
-export function parseAddressText(text, data = defaultData) {
+function parseAddressTextWithCandidates(text, candidates) {
   if (typeof text !== 'string' || text.trim() === '') {
     return {
       text,
@@ -362,7 +361,6 @@ export function parseAddressText(text, data = defaultData) {
     };
   }
 
-  const candidates = buildTextCandidates(data);
   const match = matchCommaSeparatedText(text, candidates) || matchSubstringText(text, candidates);
 
   if (!match) {
@@ -397,10 +395,21 @@ function formatConvertedText(remainingText, conversion) {
   ].filter(Boolean).join(', ');
 }
 
+export function parseNewAddressText(text, data = defaultData) {
+  return parseNewAddressTextWithCandidates(text, buildNewTextCandidates(data));
+}
+
+export function parseAddressText(text, data = defaultData) {
+  return parseAddressTextWithCandidates(text, buildTextCandidates(data));
+}
+
 export function createAddressTextConverter(data = defaultData, convertOldToNew) {
+  const newTextCandidates = buildNewTextCandidates(data);
+  const textCandidates = buildTextCandidates(data);
+
   return function convertAddressText(text, options = {}) {
-    const newParseResult = parseNewAddressText(text, data);
-    const parseResult = parseAddressText(text, data);
+    const newParseResult = parseNewAddressTextWithCandidates(text, newTextCandidates);
+    const parseResult = parseAddressTextWithCandidates(text, textCandidates);
     const convertOptions = options.convertOptions || options;
     const conversion = convertOldToNew(parseResult.parsed, convertOptions);
 
