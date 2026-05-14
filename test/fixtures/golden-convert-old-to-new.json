@@ -1,0 +1,148 @@
+[
+  {
+    "name": "exact old address name path",
+    "input": {
+      "province_name": "Thành Phố Hà Nội",
+      "district_name": "Quận Ba Đình",
+      "ward_name": "Phường Điện Biên"
+    },
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "normalized no-accent names",
+    "input": {
+      "province_name": "ha noi",
+      "district_name": "ba dinh",
+      "ward_name": "dien bien"
+    },
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "old ward code lookup",
+    "input": {
+      "ward_code": "65803"
+    },
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "ward_code",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "mixed names and matching code",
+    "input": {
+      "province_name": "Thành Phố Hà Nội",
+      "district_name": "Quận Ba Đình",
+      "ward_name": "Phường Điện Biên",
+      "ward_code": "65803"
+    },
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "strict mismatch rejects inconsistent parent codes",
+    "input": {
+      "province_code": "13",
+      "district_code": "267",
+      "ward_code": "65803"
+    },
+    "options": {
+      "strict": true
+    },
+    "expected": {
+      "status": "invalid_input",
+      "match_level": "ward_code",
+      "warning_includes": "does not belong"
+    }
+  },
+  {
+    "name": "ambiguous old ward returns all candidates",
+    "input": {
+      "province_name": "Thành Phố Hà Nội",
+      "district_name": "Quận Ba Đình",
+      "ward_name": "Phường Đội Cấn"
+    },
+    "options": {
+      "multiple": "all"
+    },
+    "expected": {
+      "status": "ambiguous",
+      "match_level": "province_district_ward_name",
+      "candidate_count": 2,
+      "candidate_new_ward_codes": ["14091", "14603"]
+    }
+  },
+  {
+    "name": "ambiguous old ward can return first",
+    "input": {
+      "province_name": "Thành Phố Hà Nội",
+      "district_name": "Quận Ba Đình",
+      "ward_name": "Phường Đội Cấn"
+    },
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091",
+      "warning_includes": "Multiple candidates found"
+    }
+  },
+  {
+    "name": "broad ward-only match is blocked by default",
+    "input": {
+      "ward_name": "Phường Điện Biên"
+    },
+    "options": {},
+    "expected": {
+      "status": "not_found",
+      "match_level": "ward_name_broad",
+      "warning_includes": "Input is too broad"
+    }
+  },
+  {
+    "name": "broad ward-only match can be allowed",
+    "input": {
+      "ward_name": "Phường Điện Biên"
+    },
+    "options": {
+      "allowBroadMatch": true,
+      "multiple": "first"
+    },
+    "expected": {
+      "status": "matched",
+      "match_level": "ward_name_broad",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  }
+]

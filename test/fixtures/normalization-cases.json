@@ -1,0 +1,42 @@
+[
+  {
+    "name": "ward prefix with accents",
+    "input": "Phường Bến Nghé",
+    "expected": "ben nghe"
+  },
+  {
+    "name": "city abbreviation and punctuation",
+    "input": "TP. Hồ Chí Minh",
+    "expected": "ho chi minh"
+  },
+  {
+    "name": "full city prefix",
+    "input": "Thành phố Thủ Đức",
+    "expected": "thu duc"
+  },
+  {
+    "name": "district prefix without accents",
+    "input": "Quan Ba Dinh",
+    "expected": "ba dinh"
+  },
+  {
+    "name": "commune prefix with separators",
+    "input": "Xã Vân-Từ",
+    "expected": "van tu"
+  },
+  {
+    "name": "special d character",
+    "input": "Đội Cấn",
+    "expected": "doi can"
+  },
+  {
+    "name": "repeated administrative prefixes",
+    "input": "Thành phố TP Hà Nội",
+    "expected": "ha noi"
+  },
+  {
+    "name": "administrative prefix only",
+    "input": "Phường",
+    "expected": ""
+  }
+]

@@ -1,0 +1,84 @@
+[
+  {
+    "name": "old full comma-separated address",
+    "text": "123 Lê Lợi, Phường Điện Biên, Quận Ba Đình, Thành Phố Hà Nội",
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "input_type": "old",
+      "remaining_text": "123 Lê Lợi",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "old no-accent comma-separated address",
+    "text": "123 le loi, dien bien, ba dinh, ha noi",
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "input_type": "old",
+      "remaining_text": "123 le loi",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "old substring address without commas",
+    "text": "123 Lê Lợi Phường Điện Biên Quận Ba Đình Thành Phố Hà Nội",
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "input_type": "old",
+      "remaining_text": "123 Lê Lợi",
+      "match_level": "province_district_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "new full comma-separated address",
+    "text": "123 Lê Lợi, Phường Ba Đình, Thành Phố Hà Nội",
+    "options": {
+      "multiple": "first"
+    },
+    "expected": {
+      "input_type": "new",
+      "remaining_text": "123 Lê Lợi",
+      "match_level": "province_ward_name",
+      "new_province_code": "11",
+      "new_ward_code": "14091"
+    }
+  },
+  {
+    "name": "ambiguous old full address",
+    "text": "123 Lê Lợi, Phường Đội Cấn, Quận Ba Đình, Thành Phố Hà Nội",
+    "options": {
+      "multiple": "all"
+    },
+    "expected": {
+      "input_type": "old",
+      "remaining_text": "123 Lê Lợi",
+      "match_level": "province_district_ward_name",
+      "status": "ambiguous",
+      "candidate_count": 2,
+      "candidate_new_ward_codes": ["14091", "14603"]
+    }
+  },
+  {
+    "name": "text without administrative address",
+    "text": "123 Lê Lợi",
+    "options": {},
+    "expected": {
+      "input_type": null,
+      "remaining_text": "123 Lê Lợi",
+      "match_level": null,
+      "status": "invalid_input"
+    }
+  }
+]

@@ -1,0 +1,47 @@
+{
+  "name": "vietnam-administrative-address",
+  "version": "0.3.0",
+  "description": "Offline Vietnamese administrative address converter for old-to-new merged addresses.",
+  "type": "module",
+  "engines": {
+    "node": ">=16"
+  },
+  "main": "./src/index.js",
+  "browser": {
+    "./src/data.js": "./src/data.browser.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./data": {
+      "browser": "./src/data.browser.js",
+      "default": "./src/data.js"
+    },
+    "./normalize": "./src/normalize.js"
+  },
+  "files": [
+    "src",
+    "data",
+    "admin_new",
+    "admin_old_2025",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "generate:mapping": "python3 scripts/generate_old_to_new_mapping.py",
+    "test": "vitest run",
+    "verify": "node scripts/verify_converter.mjs",
+    "check": "npm run test && npm run verify",
+    "prepack": "npm run check"
+  },
+  "keywords": [
+    "vietnam",
+    "administrative",
+    "address",
+    "migration",
+    "converter"
+  ],
+  "devDependencies": {
+    "vitest": "^0.34.6"
+  },
+  "license": "MIT"
+}
