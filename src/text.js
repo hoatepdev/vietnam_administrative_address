@@ -1,6 +1,8 @@
 import { defaultData } from './data.js';
 import { getComparableNames, normalizeVietnameseName } from './normalize.js';
 
+const PARSER_VERSION = '1.0.0';
+
 const ADMIN_PREFIXES = [
   'thanh pho',
   'thi tran',
@@ -38,6 +40,44 @@ function normalizeAddressText(value) {
 
 function unique(values) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function now() {
+  return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+}
+
+function getElapsedMs(startedAt) {
+  return Math.max(0, Math.round((now() - startedAt) * 1000) / 1000);
+}
+
+function getMappingVersion(data) {
+  return data.mapping?.meta?.version || null;
+}
+
+function defineDeprecatedValue(target, key, value) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  });
+
+  return target;
+}
+
+function createMeta(data, startedAt, warnings = []) {
+  return {
+    parser_version: PARSER_VERSION,
+    mapping_version: getMappingVersion(data),
+    elapsed_ms: getElapsedMs(startedAt),
+    warnings: unique(warnings)
+  };
+}
+
+function withParseAliases(result) {
+  defineDeprecatedValue(result, 'remaining_text', result.street_address);
+  defineDeprecatedValue(result, 'warnings', result.meta.warnings);
+  return result;
 }
 
 function createAliases(record, fallback) {
@@ -152,6 +192,41 @@ function createMatch(candidate, level, score, tokenStart, tokenCount, tokens, so
     source,
     remainingText: tokenStart === null ? null : tokens.slice(0, tokenStart).map(token => token.raw).join(', ')
   };
+}
+
+function getParseConfidence(match) {
+  if (!match) {
+    return 0;
+  }
+
+  if (match.source === 'comma') {
+    return match.level === 'province_name' ? 0.65 : 0.98;
+  }
+
+  return match.level === 'province_name' ? 0.55 : 0.9;
+}
+
+function getMatchStrategy(match) {
+  if (!match) {
+    return null;
+  }
+
+  return match.source === 'comma' ? 'comma_token_alias' : 'normalized_substring';
+}
+
+function getConvertedComponents(ward, province) {
+  if (!ward || !province) {
+    return null;
+  }
+
+  return {
+    province,
+    ward
+  };
+}
+
+function getNormalizedText(text) {
+  return normalizeAddressText(text);
 }
 
 function matchCommaSeparatedText(text, candidates) {
@@ -287,11 +362,11 @@ function formatNewAddressText(remainingText, ward, province) {
   ].filter(Boolean).join(', ');
 }
 
-function buildNewAddressResult(match) {
+function buildNewAddressResult(match, parsedResult) {
   return {
     status: match ? 'matched' : 'not_found',
     match_level: match?.level || null,
-    input: match?.input || {},
+    input: match?.input || parsedResult?.parsed || {},
     old: null,
     result: match ? {
       new_province: match.candidate.newProvince,
@@ -304,103 +379,196 @@ function buildNewAddressResult(match) {
       warnings: []
     } : null,
     candidates: [],
-    warnings: match ? [] : ['Could not parse new administrative address from text.']
+    warnings: match ? [] : ['Could not parse new administrative address from text.'],
+    confidence: getParseConfidence(match),
+    match_strategy: getMatchStrategy(match),
+    normalized_text: parsedResult?.normalized_text || ''
   };
 }
 
-function parseNewAddressTextWithCandidates(text, candidates) {
+function parseNewAddressTextWithCandidates(text, candidates, data = defaultData) {
+  const startedAt = now();
   if (typeof text !== 'string' || text.trim() === '') {
-    return {
+    return withParseAliases({
       text,
       parsed: {},
-      remaining_text: '',
+      street_address: '',
       match_level: null,
       source: null,
       new_province: null,
       new_ward: null,
-      warnings: ['Provide a non-empty address text.']
-    };
+      converted_text: null,
+      components: null,
+      confidence: 0,
+      match_strategy: null,
+      normalized_text: '',
+      meta: createMeta(data, startedAt, ['Provide a non-empty address text.'])
+    });
   }
 
   const match = matchCommaSeparatedText(text, candidates) || matchSubstringText(text, candidates);
 
   if (!match) {
-    return {
+    return withParseAliases({
       text,
       parsed: {},
-      remaining_text: text,
+      street_address: text,
       match_level: null,
       source: null,
       new_province: null,
       new_ward: null,
-      warnings: ['Could not parse new administrative address from text.']
-    };
+      converted_text: null,
+      components: null,
+      confidence: 0,
+      match_strategy: null,
+      normalized_text: getNormalizedText(text),
+      meta: createMeta(data, startedAt, ['Could not parse new administrative address from text.'])
+    });
   }
 
-  return {
+  const streetAddress = match.remainingText || '';
+  const convertedText = formatNewAddressText(streetAddress, match.candidate.newWard, match.candidate.newProvince);
+
+  return withParseAliases({
     text,
     parsed: match.input,
-    remaining_text: match.remainingText || '',
-    converted_text: formatNewAddressText(match.remainingText || '', match.candidate.newWard, match.candidate.newProvince),
+    street_address: streetAddress,
+    converted_text: convertedText,
+    components: getConvertedComponents(match.candidate.newWard, match.candidate.newProvince),
     match_level: match.level,
     source: match.source,
     new_province: match.candidate.newProvince,
     new_ward: match.candidate.newWard,
-    warnings: []
-  };
+    confidence: getParseConfidence(match),
+    match_strategy: getMatchStrategy(match),
+    normalized_text: getNormalizedText(text),
+    meta: createMeta(data, startedAt)
+  });
 }
 
-function parseAddressTextWithCandidates(text, candidates) {
+function parseAddressTextWithCandidates(text, candidates, data = defaultData) {
+  const startedAt = now();
   if (typeof text !== 'string' || text.trim() === '') {
-    return {
+    return withParseAliases({
       text,
       parsed: {},
-      remaining_text: '',
+      street_address: '',
       match_level: null,
-      warnings: ['Provide a non-empty address text.']
-    };
+      source: null,
+      confidence: 0,
+      match_strategy: null,
+      normalized_text: '',
+      meta: createMeta(data, startedAt, ['Provide a non-empty address text.'])
+    });
   }
 
   const match = matchCommaSeparatedText(text, candidates) || matchSubstringText(text, candidates);
 
   if (!match) {
-    return {
+    return withParseAliases({
       text,
       parsed: {},
-      remaining_text: text,
+      street_address: text,
       match_level: null,
-      warnings: ['Could not parse old administrative address from text.']
-    };
+      source: null,
+      confidence: 0,
+      match_strategy: null,
+      normalized_text: getNormalizedText(text),
+      meta: createMeta(data, startedAt, ['Could not parse old administrative address from text.'])
+    });
   }
 
-  return {
+  return withParseAliases({
     text,
     parsed: pickParsedInput(match),
-    remaining_text: match.remainingText || '',
+    street_address: match.remainingText || '',
     match_level: match.level,
     source: match.source,
-    warnings: []
-  };
+    confidence: getParseConfidence(match),
+    match_strategy: getMatchStrategy(match),
+    normalized_text: getNormalizedText(text),
+    meta: createMeta(data, startedAt)
+  });
 }
 
-function formatConvertedText(remainingText, conversion) {
+function formatConvertedText(streetAddress, conversion) {
   if (!conversion.result) {
     return null;
   }
 
   return [
-    remainingText,
+    streetAddress,
     conversion.result.new_ward?.name_with_type || conversion.result.new_ward?.name,
     conversion.result.new_province?.name_with_type || conversion.result.new_province?.name
   ].filter(Boolean).join(', ');
 }
 
+function getConversionComponents(conversion) {
+  if (!conversion.result) {
+    return null;
+  }
+
+  return {
+    province: conversion.result.new_province || null,
+    ward: conversion.result.new_ward || null
+  };
+}
+
+function isSameJson(left, right) {
+  return JSON.stringify(left || {}) === JSON.stringify(right || {});
+}
+
+function toAddressConversion(conversion, parsed) {
+  const { input, old, warnings, meta, ...rest } = conversion;
+  const addressConversion = {
+    ...rest,
+    normalized_text: conversion.normalized_text || getNormalizedText(parsed)
+  };
+
+  defineDeprecatedValue(addressConversion, 'old', old);
+
+  if (!isSameJson(input, parsed)) {
+    addressConversion.input = input;
+  } else {
+    defineDeprecatedValue(addressConversion, 'input', input);
+  }
+
+  defineDeprecatedValue(addressConversion, 'warnings', warnings || []);
+  if (meta) {
+    defineDeprecatedValue(addressConversion, 'meta', meta);
+  }
+
+  return addressConversion;
+}
+
+function createAddressResponse({ text, inputType, parseResult, conversion, convertedText, converted, data, startedAt }) {
+  const warnings = unique([
+    ...(parseResult.meta?.warnings || []),
+    ...(conversion.warnings || [])
+  ]);
+  const response = {
+    text,
+    input_type: inputType,
+    parsed: parseResult.parsed,
+    street_address: parseResult.street_address,
+    converted_text: convertedText,
+    converted,
+    match_level: parseResult.match_level,
+    conversion: toAddressConversion(conversion, parseResult.parsed),
+    meta: createMeta(data, startedAt, warnings)
+  };
+
+  defineDeprecatedValue(response, 'remaining_text', response.street_address);
+  defineDeprecatedValue(response, 'warnings', warnings);
+  return response;
+}
+
 export function parseNewAddressText(text, data = defaultData) {
-  return parseNewAddressTextWithCandidates(text, buildNewTextCandidates(data));
+  return parseNewAddressTextWithCandidates(text, buildNewTextCandidates(data), data);
 }
 
 export function parseAddressText(text, data = defaultData) {
-  return parseAddressTextWithCandidates(text, buildTextCandidates(data));
+  return parseAddressTextWithCandidates(text, buildTextCandidates(data), data);
 }
 
 export function createAddressTextConverter(data = defaultData, convertOldToNew) {
@@ -408,8 +576,9 @@ export function createAddressTextConverter(data = defaultData, convertOldToNew) 
   const textCandidates = buildTextCandidates(data);
 
   return function convertAddressText(text, options = {}) {
-    const newParseResult = parseNewAddressTextWithCandidates(text, newTextCandidates);
-    const parseResult = parseAddressTextWithCandidates(text, textCandidates);
+    const startedAt = now();
+    const newParseResult = parseNewAddressTextWithCandidates(text, newTextCandidates, data);
+    const parseResult = parseAddressTextWithCandidates(text, textCandidates, data);
     const convertOptions = options.convertOptions || options;
     const conversion = convertOldToNew(parseResult.parsed, convertOptions);
 
@@ -417,40 +586,30 @@ export function createAddressTextConverter(data = defaultData, convertOldToNew) 
       const shouldPreferNew = newParseResult.match_level === 'province_ward_name' && parseResult.match_level !== 'province_district_ward_name';
 
       if (!shouldPreferNew) {
-        const warnings = unique([...parseResult.warnings, ...(conversion.warnings || [])]);
-
-        return {
+        return createAddressResponse({
           text,
-          input_type: 'old',
-          parsed: parseResult.parsed,
-          remaining_text: parseResult.remaining_text,
-          converted_text: formatConvertedText(parseResult.remaining_text, conversion),
-          match_level: parseResult.match_level,
-          conversion: {
-            ...conversion,
-            warnings
-          },
-          warnings
-        };
+          inputType: 'old',
+          parseResult,
+          conversion,
+          convertedText: formatConvertedText(parseResult.street_address, conversion),
+          converted: getConversionComponents(conversion),
+          data,
+          startedAt
+        });
       }
     }
 
     if (conversion.status === 'invalid_input') {
-      const warnings = unique([...parseResult.warnings, ...(conversion.warnings || [])]);
-
-      return {
+      return createAddressResponse({
         text,
-        input_type: null,
-        parsed: parseResult.parsed,
-        remaining_text: parseResult.remaining_text,
-        converted_text: null,
-        match_level: parseResult.match_level,
-        conversion: {
-          ...conversion,
-          warnings
-        },
-        warnings
-      };
+        inputType: null,
+        parseResult,
+        conversion,
+        convertedText: null,
+        converted: null,
+        data,
+        startedAt
+      });
     }
 
     const newConversion = buildNewAddressResult(newParseResult.match_level ? {
@@ -460,21 +619,17 @@ export function createAddressTextConverter(data = defaultData, convertOldToNew) 
         newProvince: newParseResult.new_province,
         newWard: newParseResult.new_ward
       }
-    } : null);
-    const warnings = unique([...newParseResult.warnings, ...(newConversion.warnings || [])]);
+    } : null, newParseResult);
 
-    return {
+    return createAddressResponse({
       text,
-      input_type: newConversion.status === 'matched' ? 'new' : null,
-      parsed: newParseResult.parsed,
-      remaining_text: newParseResult.remaining_text,
-      converted_text: newParseResult.converted_text || null,
-      match_level: newParseResult.match_level,
-      conversion: {
-        ...newConversion,
-        warnings
-      },
-      warnings
-    };
+      inputType: newConversion.status === 'matched' ? 'new' : null,
+      parseResult: newParseResult,
+      conversion: newConversion,
+      convertedText: newParseResult.converted_text || null,
+      converted: newParseResult.components,
+      data,
+      startedAt
+    });
   };
 }

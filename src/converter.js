@@ -8,6 +8,31 @@ const DEFAULT_OPTIONS = {
   allowBroadMatch: false
 };
 
+const PARSER_VERSION = '1.0.0';
+
+function now() {
+  return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
+}
+
+function getElapsedMs(startedAt) {
+  return Math.max(0, Math.round((now() - startedAt) * 1000) / 1000);
+}
+
+function getMappingVersion(data) {
+  return data.mapping?.meta?.version || null;
+}
+
+function defineDeprecatedValue(target, key, value) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: false,
+    configurable: true,
+    writable: false
+  });
+
+  return target;
+}
+
 function toCode(value) {
   if (value === null || value === undefined) {
     return '';
@@ -17,7 +42,91 @@ function toCode(value) {
 }
 
 function unique(values) {
-  return Array.from(new Set(values));
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizeInputText(input = {}) {
+  return [input.province_name, input.district_name, input.ward_name]
+    .map(value => normalizeVietnameseName(value))
+    .filter(Boolean)
+    .join('|');
+}
+
+function getMatchStrategy(matchLevel, input = {}) {
+  if (!matchLevel) {
+    return null;
+  }
+
+  if (toCode(input.province_code) || toCode(input.district_code) || toCode(input.ward_code)) {
+    return 'code_or_name_with_code_filter';
+  }
+
+  if (matchLevel.includes('name')) {
+    return 'normalized_name';
+  }
+
+  return matchLevel;
+}
+
+function getConfidence(status, matchLevel) {
+  if (status === 'invalid_input' || status === 'not_found') {
+    return 0;
+  }
+
+  if (status === 'ambiguous') {
+    return 0.6;
+  }
+
+  const scores = {
+    province_district_ward_name: 0.98,
+    province_ward_name: 0.96,
+    ward_code: 0.95,
+    district_ward_name: 0.9,
+    province_district_name: 0.85,
+    district_code: 0.8,
+    province_code: 0.75,
+    district_name: 0.7,
+    province_name: 0.65,
+    ward_name_broad: 0.55
+  };
+
+  return scores[matchLevel] || 0.7;
+}
+
+function withoutDuplicatedOld(candidate) {
+  if (!candidate) {
+    return null;
+  }
+
+  const { old, ...result } = candidate;
+  defineDeprecatedValue(result, 'old', old);
+  return result;
+}
+
+function addConversionDetails(result) {
+  return {
+    ...result,
+    confidence: getConfidence(result.status, result.match_level),
+    match_strategy: getMatchStrategy(result.match_level, result.input),
+    normalized_text: normalizeInputText(result.input)
+  };
+}
+
+function finalizeConversionResponse(result, data, startedAt) {
+  const warnings = unique(result.warnings || []);
+  const response = {
+    ...result,
+    warnings,
+    meta: {
+      parser_version: PARSER_VERSION,
+      mapping_version: getMappingVersion(data),
+      elapsed_ms: getElapsedMs(startedAt),
+      warnings
+    }
+  };
+
+  defineDeprecatedValue(response, 'warnings', warnings);
+  return response;
 }
 
 function intersectIndexes(groups) {
@@ -243,7 +352,7 @@ function buildResult(input, options, indexes, matchLevel, data, warnings) {
   const allWarnings = unique([...warnings, ...candidateWarnings]);
 
   if (options.strict && allWarnings.length > 0) {
-    return {
+    return addConversionDetails({
       status: 'invalid_input',
       match_level: matchLevel,
       input,
@@ -251,11 +360,11 @@ function buildResult(input, options, indexes, matchLevel, data, warnings) {
       result: null,
       candidates: [],
       warnings: allWarnings
-    };
+    });
   }
 
   if (candidates.length === 0) {
-    return {
+    return addConversionDetails({
       status: 'not_found',
       match_level: matchLevel,
       input,
@@ -263,7 +372,7 @@ function buildResult(input, options, indexes, matchLevel, data, warnings) {
       result: null,
       candidates: [],
       warnings: allWarnings
-    };
+    });
   }
 
   if (options.multiple === 'first') {
@@ -272,26 +381,26 @@ function buildResult(input, options, indexes, matchLevel, data, warnings) {
       allWarnings.push(`Multiple candidates found; returning the first of ${candidates.length}.`);
     }
 
-    return {
+    return addConversionDetails({
       status: 'matched',
       match_level: matchLevel,
       input,
       old: first.old,
-      result: first,
-      candidates: [],
+      result: withoutDuplicatedOld(first),
+      candidates: candidates.length > 1 ? candidates : [],
       warnings: unique(allWarnings)
-    };
+    });
   }
 
-  return {
+  return addConversionDetails({
     status: candidates.length === 1 ? 'matched' : 'ambiguous',
     match_level: matchLevel,
     input,
     old: candidates[0]?.old || null,
-    result: candidates.length === 1 ? candidates[0] : null,
+    result: candidates.length === 1 ? withoutDuplicatedOld(candidates[0]) : null,
     candidates,
     warnings: allWarnings
-  };
+  });
 }
 
 export function createConverter(customData = defaultData) {
@@ -316,6 +425,7 @@ export function createConverter(customData = defaultData) {
     data,
     indexes,
     convertOldToNew(input = {}, options = {}) {
+      const startedAt = now();
       const resolvedOptions = { ...DEFAULT_OPTIONS, ...options };
       const warnings = [];
       const { indexes: rowIndexes, matchLevel, broadMatch } = getIndexesByInput(input, data.mapping);
@@ -323,7 +433,7 @@ export function createConverter(customData = defaultData) {
       assertInputConsistency(input, data, warnings);
 
       if (!matchLevel) {
-        return {
+        return finalizeConversionResponse(addConversionDetails({
           status: 'invalid_input',
           match_level: null,
           input,
@@ -331,11 +441,11 @@ export function createConverter(customData = defaultData) {
           result: null,
           candidates: [],
           warnings: ['Provide at least one name or code field.']
-        };
+        }), data, startedAt);
       }
 
       if (broadMatch && !resolvedOptions.allowBroadMatch) {
-        return {
+        return finalizeConversionResponse(addConversionDetails({
           status: 'not_found',
           match_level: matchLevel,
           input,
@@ -343,10 +453,14 @@ export function createConverter(customData = defaultData) {
           result: null,
           candidates: [],
           warnings: ['Input is too broad. Provide province and district context, or set allowBroadMatch: true.']
-        };
+        }), data, startedAt);
       }
 
-      return buildResult(input, resolvedOptions, rowIndexes, matchLevel, data, warnings);
+      return finalizeConversionResponse(
+        buildResult(input, resolvedOptions, rowIndexes, matchLevel, data, warnings),
+        data,
+        startedAt
+      );
     }
   };
 

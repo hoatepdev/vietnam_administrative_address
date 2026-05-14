@@ -50,7 +50,7 @@ const result = convertAddressText(
   { multiple: "first" },
 );
 
-console.log(result.remaining_text); // 123 Lê Lợi
+console.log(result.street_address); // 123 Lê Lợi
 console.log(result.converted_text); // 123 Lê Lợi, Phường Tân Định, Thành phố Hồ Chí Minh
 console.log(result.parsed); // input hành chính cũ đã parse được
 ```
@@ -109,7 +109,7 @@ convertOldToNew(input, {
 
 ### convertAddressText(text, options)
 
-Convert một chuỗi địa chỉ sang địa chỉ hành chính mới. Đầu vào có thể là địa chỉ cũ hoặc địa chỉ mới; hàm sẽ giữ lại phần không thuộc hành chính trong `remaining_text` và trả địa chỉ mới ở `converted_text`.
+Convert một chuỗi địa chỉ sang địa chỉ hành chính mới. Đầu vào có thể là địa chỉ cũ hoặc địa chỉ mới; hàm giữ phần số nhà/đường trong `street_address`, trả chuỗi mới ở `converted_text`, và trả component mới trong `converted`.
 
 ```js
 import { convertAddressText } from "vietnam-administrative-address";
@@ -139,15 +139,42 @@ Response có dạng:
     district_code: '268',
     ward_code: '65804'
   },
-  remaining_text: '123 Lê Lợi',
+  street_address: '123 Lê Lợi',
   converted_text: '123 Lê Lợi, Phường Tân Định, Thành phố Hồ Chí Minh',
+  converted: {
+    province: { code: '12', name_with_type: 'Thành phố Hồ Chí Minh' },
+    ward: { code: '26740', name_with_type: 'Phường Tân Định' }
+  },
   match_level: 'province_district_ward_name',
-  conversion: {},
-  warnings: []
+  conversion: {
+    status: 'matched',
+    result: {
+      new_province: {},
+      new_ward: {},
+      mapping: {}
+    },
+    candidates: [],
+    confidence: 0.98,
+    match_strategy: 'code_or_name_with_code_filter',
+    normalized_text: 'ho chi minh|1|da kao'
+  },
+  meta: {
+    parser_version: '1.0.0',
+    mapping_version: '10_25',
+    elapsed_ms: 1.23,
+    warnings: []
+  }
 }
 ```
 
 `input_type` là `'old'` khi parse được địa chỉ cũ và convert qua mapping, là `'new'` khi input đã là địa chỉ mới.
+
+Các field legacy vẫn truy cập được tạm thời để tương thích ngược, nhưng không còn xuất hiện trong JSON payload để giảm trùng lặp:
+
+- `remaining_text` deprecated, dùng `street_address`.
+- `warnings` deprecated, dùng `meta.warnings`.
+- `conversion.input` deprecated khi giống `parsed`.
+- `conversion.result.old` deprecated, dùng `conversion.old`.
 
 `options` được truyền tiếp sang `convertOldToNew` khi input là địa chỉ cũ. Nếu muốn tách options của parser và converter, có thể truyền `convertOptions`:
 
@@ -216,9 +243,19 @@ Hàm normalize sẽ:
     }
   },
   candidates: [],
-  warnings: []
+  confidence: 0.98,
+  match_strategy: 'normalized_name',
+  normalized_text: 'ha noi|ba dinh|dien bien',
+  meta: {
+    parser_version: '1.0.0',
+    mapping_version: '10_25',
+    elapsed_ms: 1.23,
+    warnings: []
+  }
 }
 ```
+
+`warnings` vẫn truy cập được để tương thích ngược, nhưng nên dùng `meta.warnings` cho code mới.
 
 ### status
 
@@ -253,7 +290,8 @@ const result = convertOldToNew(input, {
 
 console.log(result.status); // matched
 console.log(result.result); // kết quả đầu tiên
-console.log(result.warnings);
+console.log(result.meta.warnings);
+console.log(result.candidates); // vẫn chứa candidates thật nếu có warning multiple candidates
 ```
 
 ## Export dữ liệu
@@ -318,5 +356,5 @@ Script verify kiểm tra:
 - Nên truyền đủ `province_name`, `district_name` và `ward_name` để có kết quả chính xác nhất.
 - Nếu có mã cũ, nên truyền thêm `province_code`, `district_code` hoặc `ward_code` để thu hẹp kết quả.
 - Chỉ truyền `ward_name` có thể gây trùng tên trên toàn quốc, nên mặc định không match rộng nếu chưa bật `allowBroadMatch`.
-- Với địa chỉ cũ, `convertAddressText` chính xác nhất khi text có đủ phường/xã, quận/huyện và tỉnh/thành phố; với địa chỉ mới, text nên có đủ phường/xã và tỉnh/thành phố. Phần số nhà/đường phía trước sẽ nằm trong `remaining_text`.
+- Với địa chỉ cũ, `convertAddressText` chính xác nhất khi text có đủ phường/xã, quận/huyện và tỉnh/thành phố; với địa chỉ mới, text nên có đủ phường/xã và tỉnh/thành phố. Phần số nhà/đường phía trước sẽ nằm trong `street_address`.
 - Với dữ liệu migration lớn, nên dùng `multiple: 'all'` để tự xử lý các trường hợp một địa chỉ cũ có nhiều kết quả mới.
