@@ -1,6 +1,6 @@
 {
   "name": "vietnam-administrative-address",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Offline Vietnamese administrative address converter for old-to-new merged addresses.",
   "type": "module",
   "engines": {

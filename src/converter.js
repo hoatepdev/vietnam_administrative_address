@@ -68,12 +68,12 @@ function getMatchStrategy(matchLevel, input = {}) {
   return matchLevel;
 }
 
-function getConfidence(status, matchLevel) {
+function getConfidence(status, matchLevel, candidates = []) {
   if (status === 'invalid_input' || status === 'not_found') {
     return 0;
   }
 
-  if (status === 'ambiguous') {
+  if (status === 'ambiguous' || candidates.length > 1) {
     return 0.6;
   }
 
@@ -106,7 +106,7 @@ function withoutDuplicatedOld(candidate) {
 function addConversionDetails(result) {
   return {
     ...result,
-    confidence: getConfidence(result.status, result.match_level),
+    confidence: getConfidence(result.status, result.match_level, result.candidates),
     match_strategy: getMatchStrategy(result.match_level, result.input),
     normalized_text: normalizeInputText(result.input)
   };
@@ -265,7 +265,6 @@ function getIndexesByInput(input, mapping) {
   const wardCode = toCode(input.ward_code);
   const indexGroups = [];
   let matchLevel = null;
-  let broadMatch = false;
 
   if (provinceName && districtName && wardName) {
     const key = `${provinceName}|${districtName}|${wardName}`;
@@ -279,19 +278,16 @@ function getIndexesByInput(input, mapping) {
     } else if (provinceName) {
       indexGroups.push(mapping.indexes.by_old_province_name[provinceName] || []);
       matchLevel = 'province_name';
-      broadMatch = true;
     }
 
     if (districtName) {
       indexGroups.push(mapping.indexes.by_old_district_name[districtName] || []);
       matchLevel ||= 'district_name';
-      broadMatch ||= !provinceName;
     }
 
     if (wardName) {
       indexGroups.push(mapping.indexes.by_old_ward_name[wardName] || []);
-      matchLevel = provinceName || districtName ? 'district_ward_name' : 'ward_name_broad';
-      broadMatch ||= !provinceName && !districtName;
+      matchLevel = provinceName ? 'province_ward_name' : districtName ? 'district_ward_name' : 'ward_name_broad';
     }
   }
 
@@ -313,7 +309,7 @@ function getIndexesByInput(input, mapping) {
   return {
     indexes: intersectIndexes(indexGroups),
     matchLevel,
-    broadMatch
+    broadMatch: ['province_name', 'district_name', 'ward_name_broad'].includes(matchLevel)
   };
 }
 

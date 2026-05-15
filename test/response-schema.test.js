@@ -58,6 +58,38 @@ describe('production response schema', () => {
     expect(result.candidates.map(candidate => candidate.new_ward.code).sort()).toEqual(['14091', '14603']);
   });
 
+  test('province and ward names use province ward confidence', () => {
+    const result = convertOldToNew(
+      {
+        province_name: 'Thành Phố Hà Nội',
+        ward_name: 'Phường Điện Biên'
+      },
+      { multiple: 'first' }
+    );
+
+    expect(result.status).toBe('matched');
+    expect(result.match_level).toBe('province_ward_name');
+    expect(result.confidence).toBe(0.96);
+    expect(result.result.new_ward.code).toBe('14091');
+  });
+
+  test('forced first ambiguous result caps confidence', () => {
+    const result = convertOldToNew(
+      {
+        province_name: 'Thành Phố Hà Nội',
+        district_name: 'Quận Ba Đình',
+        ward_name: 'Phường Đội Cấn'
+      },
+      { multiple: 'first' }
+    );
+
+    expect(result.status).toBe('matched');
+    expect(result.match_level).toBe('province_district_ward_name');
+    expect(result.confidence).toBe(0.6);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.warnings.some(warning => warning.includes('Multiple candidates found'))).toBe(true);
+  });
+
   test('old and new address conversion expose structured converted components', () => {
     const oldResult = convertAddressText(
       '123 Lê Lợi, Phường Điện Biên, Quận Ba Đình, Thành Phố Hà Nội',

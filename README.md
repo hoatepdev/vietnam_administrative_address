@@ -266,6 +266,30 @@ Hàm normalize sẽ:
 | `not_found`     | Không tìm thấy mapping phù hợp.                                           |
 | `invalid_input` | Input thiếu dữ liệu tối thiểu hoặc mismatch khi bật `strict`.             |
 
+### confidence
+
+`confidence` là điểm tin cậy từ `0` đến `1`, được tính từ `status`, `match_level` và số lượng `candidates`.
+
+- Nếu `status` là `invalid_input` hoặc `not_found`, `confidence` luôn là `0`.
+- Nếu `status` là `ambiguous`, hoặc dùng `multiple: 'first'` nhưng thực tế có nhiều `candidates`, `confidence` là `0.6`.
+- Nếu match ra đúng một kết quả, `confidence` được lấy theo bảng `match_level` bên dưới.
+
+| `match_level`                   | `confidence` | Ý nghĩa                                                    |
+| -------------------------------- | ------------ | ---------------------------------------------------------- |
+| `province_district_ward_name`    | `0.98`       | Match đủ tỉnh/thành phố, quận/huyện và phường/xã cũ.      |
+| `province_ward_name`             | `0.96`       | Match theo tỉnh/thành phố và phường/xã cũ.                |
+| `ward_code`                      | `0.95`       | Match trực tiếp bằng mã phường/xã cũ.                     |
+| `district_ward_name`             | `0.9`        | Match theo quận/huyện và phường/xã cũ.                    |
+| `province_district_name`         | `0.85`       | Match theo tỉnh/thành phố và quận/huyện cũ.               |
+| `district_code`                  | `0.8`        | Match bằng mã quận/huyện cũ.                              |
+| `province_code`                  | `0.75`       | Match bằng mã tỉnh/thành phố cũ.                          |
+| `district_name`                  | `0.7`        | Match chỉ theo tên quận/huyện cũ.                         |
+| `province_name`                  | `0.65`       | Match chỉ theo tên tỉnh/thành phố cũ.                     |
+| `ward_name_broad`                | `0.55`       | Match rộng chỉ theo tên phường/xã cũ khi bật broad match. |
+| Không nằm trong bảng             | `0.7`        | Fallback cho `match_level` chưa được định nghĩa.          |
+
+Ví dụ: nếu truyền đủ `province_name`, `district_name`, `ward_name` và chỉ có một kết quả, response có `confidence: 0.98`. Nếu cùng input đó có nhiều kết quả và dùng `multiple: 'first'`, response vẫn là `matched` nhưng `confidence` giảm còn `0.6` và có warning trong `meta.warnings`.
+
 ### multiple: 'all'
 
 Khi có nhiều kết quả hợp lệ, converter trả toàn bộ trong `candidates` và `status` là `ambiguous`.
